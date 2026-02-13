@@ -40,9 +40,14 @@ def optionally_handle_anthropic_oauth(
     """
     auth_header = headers.get("authorization", "")
     if auth_header and auth_header.startswith(f"Bearer {ANTHROPIC_OAUTH_TOKEN_PREFIX}"):
-        api_key = auth_header.replace("Bearer ", "")
+        for k in list(headers.keys()):
+            if k.lower() == "x-api-key":
+                headers.pop(k)
+                break
+        api_key = None
         headers["anthropic-beta"] = ANTHROPIC_OAUTH_BETA_HEADER
         headers["anthropic-dangerous-direct-browser-access"] = "true"
+
     return headers, api_key
 
 
@@ -317,7 +322,7 @@ class AnthropicModelInfo(BaseLLMModelInfo):
 
     def get_anthropic_headers(
         self,
-        api_key: str,
+        api_key: Optional[str],
         anthropic_version: Optional[str] = None,
         computer_tool_used: Optional[str] = None,
         prompt_caching_set: bool = False,
@@ -385,7 +390,7 @@ class AnthropicModelInfo(BaseLLMModelInfo):
         elif len(betas) > 0:
             headers["anthropic-beta"] = ",".join(betas)
 
-        return headers
+        return {k: v for k, v in headers.items() if v is not None}
 
     def validate_environment(
         self,
@@ -399,7 +404,7 @@ class AnthropicModelInfo(BaseLLMModelInfo):
     ) -> Dict:
         # Check for Anthropic OAuth token in headers
         headers, api_key = optionally_handle_anthropic_oauth(headers=headers, api_key=api_key)
-        if api_key is None:
+        if api_key is None and not any(k.lower() == "authorization" for k in headers):
             raise litellm.AuthenticationError(
                 message="Missing Anthropic API Key - A call is being made to anthropic but no key is set either in the environment variables or via params. Please set `ANTHROPIC_API_KEY` in your environment vars",
                 llm_provider="anthropic",
